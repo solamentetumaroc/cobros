@@ -407,14 +407,7 @@ function cargarEstado() {
 function save(){ localStorage.setItem('cobros_v4', JSON.stringify(E)); }
 
 // ===================== LOGIN =====================
-function checkLogin(){
-  if(document.getElementById('loginInput').value === E.config.password){
-    document.getElementById('loginScreen').style.display='none';
-    renderAll();
-  } else {
-    document.getElementById('loginError').style.display='block';
-  }
-}
+// checkLogin definida más abajo
 function cambiarPassword(){
   const np=document.getElementById('nuevaPass').value.trim();
   if(!np) return alert('Escribe una contraseña');
@@ -950,8 +943,32 @@ O escribe 0 para importar todos (últimos 3 meses)',
 window.addEventListener('load',()=>{
   const hash=new URLSearchParams(location.hash.replace('#',''));
   const token=hash.get('access_token');
-  if(token){ E.gcalConectado=true; save(); history.replaceState({},'',location.pathname); setTimeout(()=>importarGCal(token),400); }
+  if(token){
+    E.gcalConectado=true; save();
+    history.replaceState({},'',location.pathname);
+    // Guardar token para importar después del login
+    sessionStorage.setItem('gcal_pending_token', token);
+  }
 });
+
+function checkLogin(){
+  const val=document.getElementById('loginInput').value;
+  const pass=E.config.password||'1234';
+  if(val===pass){
+    document.getElementById('loginScreen').style.display='none';
+    renderAll();
+    // Si hay token pendiente de Google Calendar, importar ahora
+    const pendingToken=sessionStorage.getItem('gcal_pending_token');
+    if(pendingToken){
+      sessionStorage.removeItem('gcal_pending_token');
+      setTimeout(()=>importarGCal(pendingToken),500);
+    }
+  } else {
+    document.getElementById('loginError').style.display='block';
+    document.getElementById('loginInput').value='';
+    document.getElementById('loginInput').focus();
+  }
+}
 async function importarGCal(token){
   const mesIni=Number(localStorage.getItem('gcal_mesIni')??mes);
   const anioIni=Number(localStorage.getItem('gcal_anioIni')??anio);
