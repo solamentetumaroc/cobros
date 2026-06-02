@@ -316,7 +316,7 @@
     <div class="form-group"><label>Servicio</label><select id="coServicio"></select></div>
     <div class="form-group"><label>Importe (Dh)</label><input type="number" id="coImporte" placeholder="200"/></div>
     <div class="form-group"><label>Método de pago</label><select id="coMetodo"></select></div>
-    <div class="form-group" id="grpCheque" style="display:none"><label>Fecha vencimiento cheque</label><input type="date" id="coVencimiento"/></div>
+    <div class="form-group"><label>Fecha vencimiento (cheque o pago diferido)</label><input type="date" id="coVencimiento"/></div>
     <div class="form-group"><label>Nota</label><input type="text" id="coNota" placeholder="..."/></div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="cerrarModal('modalCobro')">Cancelar</button>
@@ -528,7 +528,7 @@ function renderClientas(){
       const cobS=cobros.filter(c=>c.clientaId===cl.id&&c.sesionId===s.id).reduce((a,c)=>a+Number(c.importe),0);
       return `<div class="sesion-item">
         <div class="sesion-info"><span class="sesion-date">${fmtFecha(s.fecha)}</span>${s.servicio?'<span class="sesion-tag">'+s.servicio+'</span>':''}</div>
-        <span class="sesion-cobro ${cobS>0?'':'pend'}">${cobS>0?cobS+' Dh ✓':'Sin cobrar'}</span>
+        ${cobS>0?'<span class="sesion-cobro">'+cobS+' Dh ✓</span>':''}
       </div>`;
     }).join('');
 
@@ -678,7 +678,7 @@ function abrirModalCobro(clId=''){
   document.getElementById('coFecha').value=new Date().toISOString().split('T')[0];
   document.getElementById('coImporte').value=E.config.precioBase;
   document.getElementById('coNota').value='';
-  document.getElementById('grpCheque').style.display='none';
+  document.getElementById('coVencimiento').value=new Date().toISOString().split('T')[0];
   document.getElementById('modalCobro').classList.add('open');
 }
 
@@ -703,9 +703,13 @@ function guardarClienta(){
   const calNombre=document.getElementById('clCalNombre').value.trim();
   const sesionesContrato=Number(document.getElementById('clSesiones').value)||0;
   const pagoInicial=Number(document.getElementById('clPagoInicial').value)||0;
-  const fechaInicio=document.getElementById('clFechaInicio').value;
+  const fechaInicio=document.getElementById('clFechaInicio').value||new Date().toISOString().split('T')[0];
   const servicio=document.getElementById('clServicio').value;
-  E.clientas.push({id:uid(),nombre,calNombre:calNombre||nombre,precio,sesionesContrato,pagoInicial,fechaInicio,servicio});
+  const clId=uid();
+  E.clientas.push({id:clId,nombre,calNombre:calNombre||nombre,precio,sesionesContrato,pagoInicial,fechaInicio,servicio});
+  if(pagoInicial>0){
+    E.cobros.push({id:uid(),clientaId:clId,fecha:fechaInicio,importe:pagoInicial,metodo:'Efectivo',servicio,nota:'Pago inicial contrato',vencimiento:fechaInicio,esInicial:true});
+  }
   save(); cerrarModal('modalClienta'); renderAll();
 }
 
@@ -718,7 +722,8 @@ function guardarCobro(){
   const nota=document.getElementById('coNota').value;
   const vencimiento=document.getElementById('coVencimiento').value;
   if(!clientaId||!fecha||!importe) return alert('Rellena todos los campos');
-  E.cobros.push({id:uid(),clientaId,fecha,importe:Number(importe),metodo,servicio,nota,vencimiento:metodo==='Cheque'?vencimiento:''});
+  const vcto = metodo==='Cheque' ? vencimiento : fecha;
+  E.cobros.push({id:uid(),clientaId,fecha,importe:Number(importe),metodo,servicio,nota,vencimiento:vcto});
   save(); cerrarModal('modalCobro'); renderAll();
 }
 
