@@ -309,6 +309,25 @@
   </div>
 </div>
 
+<!-- MODAL EDITAR CLIENTA -->
+<div class="modal-overlay" id="modalEditarClienta">
+  <div class="modal">
+    <h3>Editar clienta</h3>
+    <input type="hidden" id="editClId"/>
+    <div class="form-group"><label>Nombre completo</label><input type="text" id="editClNombre"/></div>
+    <div class="form-group"><label>Nombre en el calendario</label><input type="text" id="editClCalNombre"/></div>
+    <div class="form-group"><label>Servicio principal</label><select id="editClServicio"></select></div>
+    <div class="form-group"><label>Nº sesiones del contrato</label><input type="number" id="editClSesiones" min="0" max="50"/></div>
+    <div class="form-group"><label>Precio por sesión (Dh)</label><input type="number" id="editClPrecio"/></div>
+    <div class="form-group"><label>Pago inicial (Dh)</label><input type="number" id="editClPagoInicial"/></div>
+    <div class="form-group"><label>Fecha de inicio contrato</label><input type="date" id="editClFechaInicio"/></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="cerrarModal('modalEditarClienta')">Cancelar</button>
+      <button class="btn-primary" onclick="guardarEdicionClienta()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL COBRO -->
 <div class="modal-overlay" id="modalCobro">
   <div class="modal">
@@ -443,7 +462,7 @@ function renderDashboard(){
 
   // Resumen clientas
   let html='';
-  E.clientas.forEach(cl=>{
+  [...E.clientas].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).forEach(cl=>{
     const sesCl=sesiones.filter(s=>s.clientaId===cl.id);
     const cobCl=cobros.filter(c=>c.clientaId===cl.id).reduce((s,c)=>s+Number(c.importe),0);
     if(sesCl.length===0) return;
@@ -490,7 +509,7 @@ function renderClientas(){
   let html='';
   if(!E.clientas.length){ document.getElementById('clientasCards').innerHTML='<div class="empty">Añade tu primera clienta</div>'; return; }
 
-  E.clientas.forEach(cl=>{
+  [...E.clientas].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).forEach(cl=>{
     const sesCl=sesiones.filter(s=>s.clientaId===cl.id);
     const cobCl=cobros.filter(c=>c.clientaId===cl.id).reduce((s,c)=>s+Number(c.importe),0);
     const precio=cl.precio||E.config.precioBase;
@@ -556,6 +575,7 @@ function renderClientas(){
       <div class="card-actions">
         <button class="btn" onclick="abrirModalCobro('${cl.id}')">+ Cobro</button>
         <button class="btn btn-m" onclick="abrirModalSesionCl('${cl.id}')">+ Sesión</button>
+        <button class="btn btn-m" onclick="editarClienta('${cl.id}')">✏ Editar</button>
         <button class="btn btn-r" onclick="eliminarClienta('${cl.id}')">✕</button>
       </div>
     </div>`;
@@ -757,6 +777,44 @@ function guardarGasto(){
   save(); cerrarModal('modalGasto'); renderAll();
 }
 
+function editarClienta(id){
+  const cl=E.clientas.find(c=>c.id===id);
+  if(!cl) return;
+  const srvOpts=(E.servicios||[]).map(s=>`<option ${s===cl.servicio?'selected':''}>${s}</option>`).join('');
+  document.getElementById('editClServicio').innerHTML=srvOpts;
+  document.getElementById('editClId').value=id;
+  document.getElementById('editClNombre').value=cl.nombre||'';
+  document.getElementById('editClCalNombre').value=cl.calNombre||'';
+  document.getElementById('editClSesiones').value=cl.sesionesContrato||0;
+  document.getElementById('editClPrecio').value=cl.precio||E.config.precioBase;
+  document.getElementById('editClPagoInicial').value=cl.pagoInicial||0;
+  document.getElementById('editClFechaInicio').value=cl.fechaInicio||'';
+  document.getElementById('modalEditarClienta').classList.add('open');
+}
+
+function guardarEdicionClienta(){
+  const id=document.getElementById('editClId').value;
+  const cl=E.clientas.find(c=>c.id===id);
+  if(!cl) return;
+  const nuevoNombre=document.getElementById('editClNombre').value.trim();
+  if(!nuevoNombre) return alert('Escribe un nombre');
+  cl.nombre=nuevoNombre;
+  cl.calNombre=document.getElementById('editClCalNombre').value.trim()||nuevoNombre;
+  cl.servicio=document.getElementById('editClServicio').value;
+  cl.sesionesContrato=Number(document.getElementById('editClSesiones').value)||0;
+  cl.precio=Number(document.getElementById('editClPrecio').value)||E.config.precioBase;
+  // Si cambia el pago inicial, actualizar el cobro inicial existente
+  const nuevoPagoInicial=Number(document.getElementById('editClPagoInicial').value)||0;
+  const cobroInicial=E.cobros.find(c=>c.clientaId===id&&c.esInicial);
+  if(cobroInicial) cobroInicial.importe=nuevoPagoInicial;
+  else if(nuevoPagoInicial>0){
+    E.cobros.push({id:uid(),clientaId:id,fecha:cl.fechaInicio||new Date().toISOString().split('T')[0],importe:nuevoPagoInicial,metodo:'Efectivo',nota:'Pago inicial contrato',vencimiento:cl.fechaInicio,esInicial:true});
+  }
+  cl.pagoInicial=nuevoPagoInicial;
+  cl.fechaInicio=document.getElementById('editClFechaInicio').value;
+  save(); cerrarModal('modalEditarClienta'); renderAll();
+}
+
 function toggleSesion(id){
   const s=E.sesiones.find(x=>x.id===id);
   if(!s) return;
@@ -800,8 +858,15 @@ async function importarGCal(token){
       if(!existe){ E.sesiones.push({id:uid(),clientaId:cl.id,fecha,fuente:'gcal',gcalId:ev.id}); nuevas++; }
     });
     save(); renderAll();
-    alert(`✓ Calendario sincronizado. ${nuevas>0?nuevas+' sesiones nuevas.':'Sin sesiones nuevas.'}`);
-  }catch(e){ alert('Error al leer el calendario.'); }
+    // Debug: mostrar eventos encontrados vs clientas
+    const eventosEncontrados = data.items?.length || 0;
+    const nombresClientas = E.clientas.map(c=>norm(c.calNombre||c.nombre)).join(', ');
+    const eventosConNombre = data.items?.filter(ev=>{
+      const tit=norm(ev.summary||'');
+      return E.clientas.some(c=>tit.includes(norm(c.calNombre))||tit.includes(norm(c.nombre)));
+    }).length || 0;
+    alert(`✓ Calendario sincronizado.\n\nEventos leídos: ${eventosEncontrados}\nEventos con clienta: ${eventosConNombre}\nSesiones nuevas: ${nuevas}\n\nClientas buscadas: ${nombresClientas}`);
+  }catch(e){ alert('Error al leer el calendario: '+e.message); }
 }
 
 // ===================== EXPORT =====================
