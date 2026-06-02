@@ -833,7 +833,7 @@ function guardarConfig(){ E.config.precioBase=Number(document.getElementById('pr
 // ===================== GOOGLE CALENDAR =====================
 const GCAL_CLIENT_ID='856345124375-9fd7kbfpf5v4vkcdsbkc85m3omp4ni4f.apps.googleusercontent.com';
 function conectarGCal(){
-  const url=`https://accounts.google.com/o/oauth2/v2/auth?client_id=${GCAL_CLIENT_ID}&redirect_uri=${encodeURIComponent(location.origin+location.pathname)}&response_type=token&scope=${encodeURIComponent('https://www.googleapis.com/auth/calendar.readonly')}`;
+  const url=`https://accounts.google.com/o/oauth2/v2/auth?client_id=${GCAL_CLIENT_ID}&redirect_uri=${encodeURIComponent(location.origin+location.pathname)}&response_type=token&scope=${encodeURIComponent('https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly')}`;
   window.location.href=url;
 }
 window.addEventListener('load',()=>{
@@ -843,12 +843,25 @@ window.addEventListener('load',()=>{
 });
 async function importarGCal(token){
   const ini=new Date(anio,mes-2,1).toISOString();
-  const fin=new Date(anio,mes+1,0,23,59).toISOString();
+  const fin=new Date(anio,mes+2,0,23,59).toISOString();
   try{
-    const res=await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(ini)}&timeMax=${encodeURIComponent(fin)}&singleEvents=true&maxResults=500`,{headers:{Authorization:`Bearer ${token}`}});
-    const data=await res.json();
+    // 1. Obtener lista de todos los calendarios
+    const calRes=await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList',{headers:{Authorization:`Bearer ${token}`}});
+    const calData=await calRes.json();
+    const calendarios=calData.items||[];
+
+    let todosEventos=[];
+    // 2. Leer eventos de cada calendario
+    for(const cal of calendarios){
+      try{
+        const res=await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?timeMin=${encodeURIComponent(ini)}&timeMax=${encodeURIComponent(fin)}&singleEvents=true&maxResults=500`,{headers:{Authorization:`Bearer ${token}`}});
+        const data=await res.json();
+        if(data.items) todosEventos=[...todosEventos,...data.items];
+      }catch(e){}
+    }
+
     let nuevas=0;
-    data.items?.forEach(ev=>{
+    todosEventos.forEach(ev=>{
       const tit=norm(ev.summary||'');
       const cl=E.clientas.find(c=>tit.includes(norm(c.calNombre))||tit.includes(norm(c.nombre)));
       if(!cl) return;
@@ -858,14 +871,7 @@ async function importarGCal(token){
       if(!existe){ E.sesiones.push({id:uid(),clientaId:cl.id,fecha,fuente:'gcal',gcalId:ev.id}); nuevas++; }
     });
     save(); renderAll();
-    // Debug: mostrar eventos encontrados vs clientas
-    const eventosEncontrados = data.items?.length || 0;
-    const nombresClientas = E.clientas.map(c=>norm(c.calNombre||c.nombre)).join(', ');
-    const eventosConNombre = data.items?.filter(ev=>{
-      const tit=norm(ev.summary||'');
-      return E.clientas.some(c=>tit.includes(norm(c.calNombre))||tit.includes(norm(c.nombre)));
-    }).length || 0;
-    alert(`✓ Calendario sincronizado.\n\nEventos leídos: ${eventosEncontrados}\nEventos con clienta: ${eventosConNombre}\nSesiones nuevas: ${nuevas}\n\nClientas buscadas: ${nombresClientas}`);
+    alert(`✓ Calendario sincronizado. ${nuevas>0?nuevas+' sesiones nuevas importadas.':'Sin sesiones nuevas.'}\n(${calendarios.length} calendarios leídos, ${todosEventos.length} eventos)`);
   }catch(e){ alert('Error al leer el calendario: '+e.message); }
 }
 
