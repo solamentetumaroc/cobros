@@ -205,8 +205,10 @@
 
 <!-- CLIENTAS -->
 <div class="page" id="page-clientas">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+    <button class="btn" onclick="abrirModal('modalClienta')">+ Añadir clienta</button>
+  </div>
   <div id="clientasCards"></div>
-  <button class="btn-add" onclick="abrirModal('modalClienta')">+ Añadir clienta</button>
 </div>
 
 <!-- COBROS -->
@@ -524,11 +526,17 @@ function renderClientas(){
     }
 
     // Sesiones del mes
+    const hoy = new Date().toISOString().split('T')[0];
     const sesHtml=sesCl.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(s=>{
       const cobS=cobros.filter(c=>c.clientaId===cl.id&&c.sesionId===s.id).reduce((a,c)=>a+Number(c.importe),0);
+      const realizada = s.realizada !== undefined ? s.realizada : s.fecha <= hoy;
+      const realizadaBtn = `<button onclick="toggleSesion('${s.id}')" style="background:${realizada?'var(--green)':'var(--surface2)'};border:1px solid ${realizada?'var(--green)':'var(--border)'};color:${realizada?'var(--bg)':'var(--muted)'};padding:2px 8px;border-radius:6px;font-size:10px;cursor:pointer;font-family:inherit;">${realizada?'✓ Realizada':'Pendiente'}</button>`;
       return `<div class="sesion-item">
         <div class="sesion-info"><span class="sesion-date">${fmtFecha(s.fecha)}</span>${s.servicio?'<span class="sesion-tag">'+s.servicio+'</span>':''}</div>
-        ${cobS>0?'<span class="sesion-cobro">'+cobS+' Dh ✓</span>':''}
+        <div style="display:flex;align-items:center;gap:8px">
+          ${realizadaBtn}
+          ${cobS>0?'<span class="sesion-cobro">'+cobS+' Dh ✓</span>':''}
+        </div>
       </div>`;
     }).join('');
 
@@ -563,10 +571,11 @@ function renderCobros(){
   document.getElementById('cobrosBody').innerHTML=cobros.map(c=>{
     const cl=E.clientas.find(x=>x.id===c.clientaId);
     let chequeHtml='';
-    if(c.metodo==='Cheque'&&c.vencimiento){
+    if(c.vencimiento){
       const dias=diasHasta(c.vencimiento);
-      const cls=dias<0?'vencido':dias<=7?'pronto':'';
-      chequeHtml=`<span class="cheque-badge ${cls}">${dias<0?'Vencido hace '+Math.abs(dias)+'d':dias===0?'Hoy':dias+'d'}</span>`;
+      const cls=c.metodo==='Cheque'?(dias<0?'vencido':dias<=7?'pronto':''):'';
+      const label=dias<0?'Vencido hace '+Math.abs(dias)+'d':dias===0?'Hoy':dias<=30?dias+'d':'';
+      if(label) chequeHtml=`<span class="cheque-badge ${cls}">${label}</span>`;
     }
     return `<tr>
       <td>${fmtFecha(c.fecha)}</td>
@@ -746,6 +755,15 @@ function guardarGasto(){
   if(!fecha||!importe) return alert('Rellena fecha e importe');
   E.gastos.push({id:uid(),fecha,categoria,desc,importe:Number(importe),metodo,vencimiento:metodo==='Cheque'?vencimiento:''});
   save(); cerrarModal('modalGasto'); renderAll();
+}
+
+function toggleSesion(id){
+  const s=E.sesiones.find(x=>x.id===id);
+  if(!s) return;
+  s.realizada = s.realizada === undefined ? false : !s.realizada;
+  // Si no estaba definido, el valor por defecto era (fecha<=hoy), así que al pulsar lo invertimos
+  if(s.realizada === undefined) s.realizada = false;
+  save(); renderClientas();
 }
 
 function eliminarClienta(id){ if(!confirm('¿Eliminar clienta?')) return; E.clientas=E.clientas.filter(c=>c.id!==id); E.sesiones=E.sesiones.filter(s=>s.clientaId!==id); E.cobros=E.cobros.filter(c=>c.clientaId!==id); save(); renderAll(); }
