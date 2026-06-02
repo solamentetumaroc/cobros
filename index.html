@@ -165,6 +165,9 @@
 
   @media(max-width:500px){.stats-row{grid-template-columns:repeat(2,1fr);}}
 </style>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -254,6 +257,12 @@
 
 <!-- AJUSTES -->
 <div class="page" id="page-config">
+  <div class="gcal-section" style="border-color:var(--green)">
+    <h3>☁️ Sincronización Firebase</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:8px">Los datos se sincronizan automáticamente entre todos los dispositivos.</p>
+    <div id="firebaseStatus" style="font-size:12px;color:var(--muted);text-align:center">Conectando...</div>
+  </div>
+
   <div class="gcal-section">
     <h3>📅 Google Calendar</h3>
     <p style="font-size:12px;color:var(--muted);margin-bottom:10px">El nombre del evento debe contener el nombre de la clienta.</p>
@@ -404,7 +413,10 @@ function cargarEstado() {
     gcalConectado:false
   };
 }
-function save(){ localStorage.setItem('cobros_v4', JSON.stringify(E)); }
+function save(){
+  localStorage.setItem('cobros_v4', JSON.stringify(E));
+  saveRemote();
+}
 
 // ===================== LOGIN =====================
 // checkLogin definida más abajo
@@ -1027,6 +1039,47 @@ function exportarCSV(){
 function borrarDatos(){ if(confirm('¿Borrar TODOS los datos?')){ localStorage.removeItem('cobros_v4'); E=cargarEstado(); renderAll(); } }
 
 document.querySelectorAll('.modal-overlay').forEach(o=>{ o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');}); });
+
+// ===================== FIREBASE INIT =====================
+const firebaseConfig = {
+  apiKey: "AIzaSyBLSYH5KUSnl0OtqVw0uD85Aj9i_WCT91Q",
+  authDomain: "solamentetumaroc-11467.firebaseapp.com",
+  projectId: "solamentetumaroc-11467",
+  storageBucket: "solamentetumaroc-11467.firebasestorage.app",
+  messagingSenderId: "853898264",
+  appId: "1:853898264:web:66282a59efcacde0b23f6d"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const DOC_ID = 'solamentetu';
+
+function saveRemote(){
+  try{
+    E._ts = Date.now();
+    db.collection('cobros').doc(DOC_ID).set(JSON.parse(JSON.stringify(E)))
+      .catch(e=>console.error('Firebase save error:',e));
+  }catch(e){ console.error('Firebase error:',e); }
+}
+
+// Escuchar cambios en tiempo real
+db.collection('cobros').doc(DOC_ID).onSnapshot(snap=>{
+  if(snap.exists){
+    const remoto = snap.data();
+    if(!E._ts || remoto._ts > E._ts){
+      E = remoto;
+      localStorage.setItem('cobros_v4', JSON.stringify(E));
+      if(document.getElementById('loginScreen').style.display==='none'){
+        renderAll();
+      }
+      const fs=document.getElementById('firebaseStatus');
+      if(fs) fs.textContent='✓ Sincronizado';
+    }
+  }
+}, err=>{
+  console.error('Firebase listen error:',err);
+  const fs=document.getElementById('firebaseStatus');
+  if(fs) fs.textContent='Sin conexión - modo local';
+});
 </script>
 </body>
 </html>
