@@ -150,6 +150,13 @@
   .cat-item:last-child{border-bottom:none;}
 
   .empty{text-align:center;color:var(--muted);padding:28px;font-size:13px;}
+  /* SIDEBAR CLIENTAS */
+  .sidebar{position:fixed;left:0;top:0;bottom:0;width:44px;background:var(--surface);border-right:1px solid var(--border);z-index:50;display:flex;flex-direction:column;align-items:center;padding-top:80px;gap:4px;overflow:visible;}
+  .sidebar-item{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;font-weight:700;color:var(--muted);background:transparent;border:1px solid transparent;transition:all 0.2s;position:relative;}
+  .sidebar-item:hover{background:var(--surface2);border-color:var(--border);color:var(--accent);}
+  .sidebar-item:hover .sidebar-tooltip{display:block;}
+  .sidebar-tooltip{display:none;position:absolute;left:44px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:4px 10px;font-size:12px;white-space:nowrap;color:var(--text);pointer-events:none;z-index:200;}
+  body{padding-left:44px;}
   .page{display:none;}
   .page.active{display:block;}
   .tabs-inner{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:14px;}
@@ -172,6 +179,7 @@
   </div>
 </div>
 
+<div class="sidebar" id="sidebar"></div>
 <header>
   <h1>✦ Cobros</h1>
   <div class="month-nav">
@@ -301,7 +309,7 @@
     <div class="form-group"><label>Nº de sesiones del contrato (0 = sin contrato)</label><input type="number" id="clSesiones" value="0" min="0" max="50"/></div>
     <div class="form-group"><label>Precio por sesión (Dh)</label><input type="number" id="clPrecio" placeholder="200"/></div>
     <div class="form-group"><label>Pago inicial recibido (Dh)</label><input type="number" id="clPagoInicial" placeholder="0" value="0"/></div>
-    <div class="form-group"><label>Fecha de inicio del contrato</label><input type="date" id="clFechaInicio"/></div>
+    <div class="form-group"><label>Fecha de inicio de la cura</label><input type="date" id="clFechaInicio"/></div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="cerrarModal('modalClienta')">Cancelar</button>
       <button class="btn-primary" onclick="guardarClienta()">Guardar</button>
@@ -320,7 +328,8 @@
     <div class="form-group"><label>Nº sesiones del contrato</label><input type="number" id="editClSesiones" min="0" max="50"/></div>
     <div class="form-group"><label>Precio por sesión (Dh)</label><input type="number" id="editClPrecio"/></div>
     <div class="form-group"><label>Pago inicial (Dh)</label><input type="number" id="editClPagoInicial"/></div>
-    <div class="form-group"><label>Fecha de inicio contrato</label><input type="date" id="editClFechaInicio"/></div>
+    <div class="form-group"><label>Fecha de inicio de la cura</label><input type="date" id="editClFechaInicio"/></div>
+    <div class="form-group"><label>Sesiones realizadas (corrección manual)</label><input type="number" id="editClSesRealizadas" min="0" max="50" placeholder="Dejar vacío para no cambiar"/></div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="cerrarModal('modalEditarClienta')">Cancelar</button>
       <button class="btn-primary" onclick="guardarEdicionClienta()">Guardar cambios</button>
@@ -434,9 +443,41 @@ function sum(arr,key){ return arr.reduce((s,x)=>s+Number(x[key]||0),0); }
 function diasHasta(f){ return Math.ceil((new Date(f)-new Date())/(1000*60*60*24)); }
 
 // ===================== RENDER =====================
+function renderSidebar(){
+  const sb=document.getElementById('sidebar');
+  if(!sb) return;
+  sb.innerHTML=E.clientas.sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).map(cl=>{
+    const inicial=cl.nombre.charAt(0).toUpperCase();
+    return `<div class="sidebar-item" onclick="irAClienta('${cl.id}')">
+      ${inicial}<div class="sidebar-tooltip">${cl.nombre}</div>
+    </div>`;
+  }).join('');
+}
+
+function irAClienta(id){
+  // Activar pestaña clientas
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelector('.tab[onclick*="clientas"]').classList.add('active');
+  document.getElementById('page-clientas').classList.add('active');
+  renderClientas();
+  setTimeout(()=>{
+    const cards=document.querySelectorAll('#clientasCards .card');
+    const names=document.querySelectorAll('#clientasCards .card-name');
+    const cl=E.clientas.find(c=>c.id===id);
+    if(!cl) return;
+    for(const n of names){
+      if(n.textContent===cl.nombre){
+        n.closest('.card').scrollIntoView({behavior:'smooth',block:'start'});
+        break;
+      }
+    }
+  },100);
+}
+
 function renderAll(){
   document.getElementById('monthLabel').textContent=MESES[mes]+' '+anio;
-  renderDashboard(); renderClientas(); renderCobros(); renderGastos(); renderDeuda();
+  renderDashboard(); renderClientas(); renderCobros(); renderGastos(); renderDeuda(); renderSidebar();
   renderServicios(); renderCats(); renderMetodos();
   document.getElementById('precioBase').value=E.config.precioBase;
   const gs=document.getElementById('gcalStatus');
@@ -700,7 +741,17 @@ function poblarSelects(clId=''){
   const gaC=document.getElementById('gaCat'); if(gaC) gaC.innerHTML=catOpts;
 }
 
-function abrirModal(id){ poblarSelects(); document.getElementById(id).classList.add('open'); }
+function abrirModal(id){
+  poblarSelects();
+  if(id==='modalClienta'){
+    document.getElementById('clFechaInicio').value=new Date().toISOString().split('T')[0];
+    document.getElementById('clSesiones').value=0;
+    document.getElementById('clPagoInicial').value=0;
+    document.getElementById('clNombre').value='';
+    document.getElementById('clCalNombre').value='';
+  }
+  document.getElementById(id).classList.add('open');
+}
 
 function abrirModalCobro(clId=''){
   poblarSelects(clId);
@@ -812,6 +863,30 @@ function guardarEdicionClienta(){
   }
   cl.pagoInicial=nuevoPagoInicial;
   cl.fechaInicio=document.getElementById('editClFechaInicio').value;
+  // Corrección manual de sesiones realizadas
+  const sesRealizadasVal=document.getElementById('editClSesRealizadas').value;
+  if(sesRealizadasVal!==''){
+    const nSes=Number(sesRealizadasVal);
+    // Eliminar sesiones manuales de corrección anteriores
+    E.sesiones=E.sesiones.filter(s=>!(s.clientaId===id&&s.fuente==='correccion'));
+    // Contar sesiones actuales
+    const sesActuales=E.sesiones.filter(s=>s.clientaId===id).length;
+    // Añadir o quitar sesiones para llegar al número deseado
+    if(nSes>sesActuales){
+      for(let i=0;i<nSes-sesActuales;i++){
+        E.sesiones.push({id:uid(),clientaId:id,fecha:cl.fechaInicio||new Date().toISOString().split('T')[0],fuente:'correccion',realizada:true});
+      }
+    } else if(nSes<sesActuales){
+      // Quitar las más recientes que sean de gcal o manual
+      const sesCl=E.sesiones.filter(s=>s.clientaId===id).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+      let aQuitar=sesActuales-nSes;
+      for(const s of sesCl){
+        if(aQuitar<=0) break;
+        E.sesiones=E.sesiones.filter(x=>x.id!==s.id);
+        aQuitar--;
+      }
+    }
+  }
   save(); cerrarModal('modalEditarClienta'); renderAll();
 }
 
@@ -833,6 +908,42 @@ function guardarConfig(){ E.config.precioBase=Number(document.getElementById('pr
 // ===================== GOOGLE CALENDAR =====================
 const GCAL_CLIENT_ID='856345124375-9fd7kbfpf5v4vkcdsbkc85m3omp4ni4f.apps.googleusercontent.com';
 function conectarGCal(){
+  // Preguntar qué mes importar
+  const opciones = [];
+  for(let i=-3; i<=2; i++){
+    let m=mes+i; let a=anio;
+    if(m>11){m-=12;a++;} if(m<0){m+=12;a--;}
+    opciones.push({m,a,label:MESES[m]+' '+a});
+  }
+  const selIdx = prompt(
+    'Selecciona el mes a importar (escribe el número):
+'+
+    opciones.map((o,i)=>`${i+1}. ${o.label}`).join('
+')+
+    '
+
+O escribe 0 para importar todos (últimos 3 meses)',
+    (3).toString()
+  );
+  if(selIdx===null) return;
+  const idx=Number(selIdx);
+  let mesIni, mesFin, anioIni, anioFin;
+  if(idx===0){
+    let m=mes-3; let a=anio; if(m<0){m+=12;a--;}
+    mesIni=m; anioIni=a;
+    let m2=mes+2; let a2=anio; if(m2>11){m2-=12;a2++;}
+    mesFin=m2; anioFin=a2;
+  } else if(idx>=1&&idx<=opciones.length){
+    const sel=opciones[idx-1];
+    mesIni=mesFin=sel.m; anioIni=anioFin=sel.a;
+  } else {
+    alert('Opción no válida'); return;
+  }
+  // Guardar selección para usarla al volver del OAuth
+  localStorage.setItem('gcal_mesIni', mesIni);
+  localStorage.setItem('gcal_anioIni', anioIni);
+  localStorage.setItem('gcal_mesFin', mesFin);
+  localStorage.setItem('gcal_anioFin', anioFin);
   const url=`https://accounts.google.com/o/oauth2/v2/auth?client_id=${GCAL_CLIENT_ID}&redirect_uri=${encodeURIComponent(location.origin+location.pathname)}&response_type=token&scope=${encodeURIComponent('https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly')}`;
   window.location.href=url;
 }
@@ -842,8 +953,14 @@ window.addEventListener('load',()=>{
   if(token){ E.gcalConectado=true; save(); history.replaceState({},'',location.pathname); setTimeout(()=>importarGCal(token),400); }
 });
 async function importarGCal(token){
-  const ini=new Date(anio,mes-2,1).toISOString();
-  const fin=new Date(anio,mes+2,0,23,59).toISOString();
+  const mesIni=Number(localStorage.getItem('gcal_mesIni')??mes);
+  const anioIni=Number(localStorage.getItem('gcal_anioIni')??anio);
+  const mesFin=Number(localStorage.getItem('gcal_mesFin')??mes);
+  const anioFin=Number(localStorage.getItem('gcal_anioFin')??anio);
+  localStorage.removeItem('gcal_mesIni'); localStorage.removeItem('gcal_anioIni');
+  localStorage.removeItem('gcal_mesFin'); localStorage.removeItem('gcal_anioFin');
+  const ini=new Date(anioIni,mesIni,1).toISOString();
+  const fin=new Date(anioFin,mesFin+1,0,23,59).toISOString();
   try{
     // 1. Obtener lista de todos los calendarios
     const calRes=await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList',{headers:{Authorization:`Bearer ${token}`}});
@@ -863,7 +980,11 @@ async function importarGCal(token){
     let nuevas=0;
     todosEventos.forEach(ev=>{
       const tit=norm(ev.summary||'');
-      const cl=E.clientas.find(c=>tit.includes(norm(c.calNombre))||tit.includes(norm(c.nombre)));
+      const cl=E.clientas.find(c=>{
+        const n=norm(c.nombre); const cn=norm(c.calNombre||c.nombre);
+        const partes=n.split(' '); const invertido=partes.length>=2?partes.slice(1).join(' ')+' '+partes[0]:'';
+        return tit.includes(cn)||tit.includes(n)||(invertido&&tit.includes(invertido));
+      });
       if(!cl) return;
       const fecha=(ev.start?.date||ev.start?.dateTime||'').substring(0,10);
       if(!fecha) return;
