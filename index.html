@@ -415,11 +415,24 @@ function cargarEstado() {
 }
 function save(){
   localStorage.setItem('cobros_v4', JSON.stringify(E));
-  saveRemote();
+  if(typeof saveRemote === 'function') try{ saveRemote(); }catch(e){}
 }
 
 // ===================== LOGIN =====================
-// checkLogin definida más abajo
+function checkLogin(){
+  const val=document.getElementById('loginInput').value;
+  const pass=(E.config&&E.config.password)||'1234';
+  if(val===pass){
+    document.getElementById('loginScreen').style.display='none';
+    renderAll();
+    const pendingToken=sessionStorage.getItem('gcal_pending_token');
+    if(pendingToken){ sessionStorage.removeItem('gcal_pending_token'); setTimeout(()=>importarGCal(pendingToken),500); }
+  } else {
+    document.getElementById('loginError').style.display='block';
+    document.getElementById('loginInput').value='';
+    document.getElementById('loginInput').focus();
+  }
+}
 function cambiarPassword(){
   const np=document.getElementById('nuevaPass').value.trim();
   if(!np) return alert('Escribe una contraseña');
@@ -963,24 +976,7 @@ window.addEventListener('load',()=>{
   }
 });
 
-function checkLogin(){
-  const val=document.getElementById('loginInput').value;
-  const pass=E.config.password||'1234';
-  if(val===pass){
-    document.getElementById('loginScreen').style.display='none';
-    renderAll();
-    // Si hay token pendiente de Google Calendar, importar ahora
-    const pendingToken=sessionStorage.getItem('gcal_pending_token');
-    if(pendingToken){
-      sessionStorage.removeItem('gcal_pending_token');
-      setTimeout(()=>importarGCal(pendingToken),500);
-    }
-  } else {
-    document.getElementById('loginError').style.display='block';
-    document.getElementById('loginInput').value='';
-    document.getElementById('loginInput').focus();
-  }
-}
+// checkLogin ya definida arriba
 async function importarGCal(token){
   const mesIni=Number(localStorage.getItem('gcal_mesIni')??mes);
   const anioIni=Number(localStorage.getItem('gcal_anioIni')??anio);
