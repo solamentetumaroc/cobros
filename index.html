@@ -934,13 +934,9 @@ function conectarGCal(){
     opciones.push({m,a,label:MESES[m]+' '+a});
   }
   const selIdx = prompt(
-    'Selecciona el mes a importar (escribe el número):
-'+
-    opciones.map((o,i)=>`${i+1}. ${o.label}`).join('
-')+
-    '
-
-O escribe 0 para importar todos (últimos 3 meses)',
+    'Selecciona el mes a importar (escribe el número):\n'+
+    opciones.map((o,i)=>`${i+1}. ${o.label}`).join('\n')+
+    '\n\nO escribe 0 para importar todos (últimos 3 meses)',
     (3).toString()
   );
   if(selIdx===null) return;
