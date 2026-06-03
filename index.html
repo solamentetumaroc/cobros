@@ -206,6 +206,7 @@
 <!-- DASHBOARD -->
 <div class="page active" id="page-dashboard">
   <div class="kpi-grid" id="kpiGrid"></div>
+  <div class="kpi-grid" id="kpiTotal" style="margin-top:0"></div>
   <div class="section-title">Sesiones del mes</div>
   <div id="sesionesResumen"></div>
   <div class="section-title" style="margin-top:22px">Comparativa ingresos</div>
@@ -311,17 +312,32 @@
 <!-- MODAL CLIENTA -->
 <div class="modal-overlay" id="modalClienta">
   <div class="modal">
-    <h3>Nueva clienta / Contrato</h3>
+    <h3>Nueva clienta</h3>
     <div class="form-group"><label>Nombre completo</label><input type="text" id="clNombre" placeholder="Fatima Zahra..."/></div>
     <div class="form-group"><label>Nombre en el calendario (si difiere)</label><input type="text" id="clCalNombre" placeholder="igual al nombre si vacío"/></div>
-    <div class="form-group"><label>Servicio principal</label><select id="clServicio"></select></div>
-    <div class="form-group"><label>Nº de sesiones del contrato (0 = sin contrato)</label><input type="number" id="clSesiones" value="0" min="0" max="50"/></div>
-    <div class="form-group"><label>Precio por sesión (Dh)</label><input type="number" id="clPrecio" placeholder="200"/></div>
-    <div class="form-group"><label>Pago inicial recibido (Dh)</label><input type="number" id="clPagoInicial" placeholder="0" value="0"/></div>
-    <div class="form-group"><label>Fecha de inicio de la cura</label><input type="date" id="clFechaInicio"/></div>
+    <div class="form-group"><label>Teléfono (opcional)</label><input type="tel" id="clTelefono" placeholder="06..."/></div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="cerrarModal('modalClienta')">Cancelar</button>
       <button class="btn-primary" onclick="guardarClienta()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONTRATO -->
+<div class="modal-overlay" id="modalContrato">
+  <div class="modal">
+    <h3>Nuevo contrato / Cura</h3>
+    <div class="form-group"><label>Clienta</label><select id="ctClienta"></select></div>
+    <div class="form-group"><label>Servicio</label><select id="ctServicio"></select></div>
+    <div class="form-group"><label>Nº de sesiones</label><input type="number" id="ctSesiones" value="10" min="1" max="50"/></div>
+    <div class="form-group"><label>Precio por sesión (Dh)</label><input type="number" id="ctPrecio" placeholder="200"/></div>
+    <div class="form-group"><label>Pago inicial recibido (Dh)</label><input type="number" id="ctPagoInicial" value="0"/></div>
+    <div class="form-group"><label>Método pago inicial</label><select id="ctMetodo"></select></div>
+    <div class="form-group"><label>Fecha de inicio</label><input type="date" id="ctFechaInicio"/></div>
+    <div class="form-group"><label>Notas</label><input type="text" id="ctNotas" placeholder="..."/></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="cerrarModal('modalContrato')">Cancelar</button>
+      <button class="btn-primary" onclick="guardarContrato()">Guardar contrato</button>
     </div>
   </div>
 </div>
@@ -333,12 +349,7 @@
     <input type="hidden" id="editClId"/>
     <div class="form-group"><label>Nombre completo</label><input type="text" id="editClNombre"/></div>
     <div class="form-group"><label>Nombre en el calendario</label><input type="text" id="editClCalNombre"/></div>
-    <div class="form-group"><label>Servicio principal</label><select id="editClServicio"></select></div>
-    <div class="form-group"><label>Nº sesiones del contrato</label><input type="number" id="editClSesiones" min="0" max="50"/></div>
-    <div class="form-group"><label>Precio por sesión (Dh)</label><input type="number" id="editClPrecio"/></div>
-    <div class="form-group"><label>Pago inicial (Dh)</label><input type="number" id="editClPagoInicial"/></div>
-    <div class="form-group"><label>Fecha de inicio de la cura</label><input type="date" id="editClFechaInicio"/></div>
-    <div class="form-group"><label>Sesiones realizadas (corrección manual)</label><input type="number" id="editClSesRealizadas" min="0" max="50" placeholder="Dejar vacío para no cambiar"/></div>
+    <div class="form-group"><label>Teléfono</label><input type="tel" id="editClTelefono"/></div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="cerrarModal('modalEditarClienta')">Cancelar</button>
       <button class="btn-primary" onclick="guardarEdicionClienta()">Guardar cambios</button>
@@ -405,7 +416,7 @@ function cargarEstado() {
   const d = localStorage.getItem('cobros_v4');
   if (d) return JSON.parse(d);
   return {
-    clientas:[], cobros:[], sesiones:[], gastos:[],
+    clientas:[], cobros:[], sesiones:[], gastos:[], contratos:[],
     servicios:['Cura','Masaje','Tratamiento facial','Depilación','Manicura','Otro'],
     categorias:['Productos','Salarios','Alquiler','Luz','Teléfono','Comidas','Varios'],
     metodos:['Efectivo','Cheque','Virement','Carte'],
@@ -547,6 +558,36 @@ function renderDashboard(){
   // Charts
   renderChart('chartIngresos', i=>{ let m=mes-i; let a=anio; if(m<0){m+=12;a--;} return {label:MESES[m].substr(0,3),val:sum(getMes(E.cobros,m,a),'importe')}; },'var(--accent)');
   renderChart('chartGastos', i=>{ let m=mes-i; let a=anio; if(m<0){m+=12;a--;} return {label:MESES[m].substr(0,3),val:sum(getMes(E.gastos,m,a),'importe')}; },'var(--red)');
+
+  // KPIs acumulados
+  const totalContratado=(E.contratos||[]).reduce((s,c)=>s+c.sesiones*c.precio,0);
+  const totalCobradoAll=sum(E.cobros,'importe');
+  const totalPendienteAll=Math.max(0,totalContratado-totalCobradoAll);
+  const clientasCura=E.clientas.filter(cl=>(E.contratos||[]).some(c=>c.clientaId===cl.id&&c.sesiones>1)).length;
+  const clientasEsporadicas=E.clientas.length-clientasCura;
+  const kpiTotalEl=document.getElementById('kpiTotal');
+  if(kpiTotalEl) kpiTotalEl.innerHTML=`
+    <div class="kpi" style="border-color:#2a3a2a">
+      <div class="kpi-label">Total contratado</div>
+      <div class="kpi-value" style="font-size:20px">${totalContratado} Dh</div>
+      <div class="kpi-sub">acumulado histórico</div>
+    </div>
+    <div class="kpi" style="border-color:#2a3a2a">
+      <div class="kpi-label">Total cobrado</div>
+      <div class="kpi-value" style="font-size:20px;color:var(--green)">${totalCobradoAll} Dh</div>
+      <div class="kpi-sub">acumulado histórico</div>
+    </div>
+    <div class="kpi" style="border-color:#3a2a1a">
+      <div class="kpi-label">Total pendiente</div>
+      <div class="kpi-value" style="font-size:20px;color:${totalPendienteAll>0?'var(--yellow)':'var(--green)'}">${totalPendienteAll} Dh</div>
+      <div class="kpi-sub">de todos los contratos</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Clientas</div>
+      <div class="kpi-value" style="font-size:20px">${clientasCura} <span style="font-size:13px;color:var(--muted)">curas</span></div>
+      <div class="kpi-sub">${clientasEsporadicas} esporádicas · ${E.clientas.length} total</div>
+    </div>
+  `;
 }
 
 function renderChart(id, fn, color){
@@ -562,6 +603,16 @@ function renderChart(id, fn, color){
     </div>`).join('');
 }
 
+function getContratosClienta(clientaId){
+  return (E.contratos||[]).filter(c=>c.clientaId===clientaId).sort((a,b)=>a.fechaInicio.localeCompare(b.fechaInicio));
+}
+
+function getContratoActivo(clientaId){
+  const cts=getContratosClienta(clientaId);
+  // El activo es el último
+  return cts.length>0?cts[cts.length-1]:null;
+}
+
 function renderClientas(){
   const sesiones=getMes(E.sesiones,mes,anio);
   const cobros=getMes(E.cobros,mes,anio);
@@ -571,59 +622,73 @@ function renderClientas(){
   [...E.clientas].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).forEach(cl=>{
     const sesCl=sesiones.filter(s=>s.clientaId===cl.id);
     const cobCl=cobros.filter(c=>c.clientaId===cl.id).reduce((s,c)=>s+Number(c.importe),0);
-    const precio=cl.precio||E.config.precioBase;
+    const contratos=getContratosClienta(cl.id);
+    const ct=getContratoActivo(cl.id);
+    const precio=ct?ct.precio:E.config.precioBase;
     const esperado=sesCl.length*precio;
     const pend=Math.max(0,esperado-cobCl);
     const pct=esperado>0?Math.min(100,(cobCl/esperado)*100):0;
 
-    // Contrato
-    let contratoHtml='';
-    if(cl.sesionesContrato>0){
-      const totalSes=E.sesiones.filter(s=>s.clientaId===cl.id).length;
-      const totalPagado=E.cobros.filter(c=>c.clientaId===cl.id).reduce((s,c)=>s+Number(c.importe),0)+(cl.pagoInicial||0);
-      const totalContrato=cl.sesionesContrato*precio;
-      const deudaCl=Math.max(0,totalContrato-totalPagado);
-      const sesRestantes=Math.max(0,cl.sesionesContrato-totalSes);
-      const pctContrato=Math.min(100,(totalSes/cl.sesionesContrato)*100);
+    // Contratos
+    let contratosHtml='';
+    contratos.forEach((c,idx)=>{
+      const totalSesCtrl=E.sesiones.filter(s=>s.clientaId===cl.id&&s.contratoId===c.id).length;
+      // Si no hay sesiones con contratoId, repartir proporcional (compatibilidad)
+      const totalSesAll=E.sesiones.filter(s=>s.clientaId===cl.id).length;
+      const totalSes=totalSesCtrl>0?totalSesCtrl:(idx===contratos.length-1?Math.max(0,totalSesAll-contratos.slice(0,-1).reduce((a,cc)=>a+cc.sesiones,0)):c.sesiones);
+      const totalPagadoCt=E.cobros.filter(cb=>cb.clientaId===cl.id&&cb.contratoId===c.id).reduce((s,cb)=>s+Number(cb.importe),0)+(c.pagoInicial||0);
+      const totalContrato=c.sesiones*c.precio;
+      const deudaCt=Math.max(0,totalContrato-totalPagadoCt);
+      const sesRestantes=Math.max(0,c.sesiones-totalSes);
+      const pctCt=Math.min(100,(totalSes/c.sesiones)*100);
+      const esActivo=idx===contratos.length-1;
 
-      // Dots
       let dots='';
-      for(let i=1;i<=cl.sesionesContrato;i++){
-        const cls=i<totalSes?'done':i===totalSes?'current':'future';
-        dots+=`<div class="bono-dot ${cls}">${i}</div>`;
+      for(let i=1;i<=c.sesiones;i++){
+        const dcls=i<=totalSes?'done':i===totalSes+1?'current':'future';
+        dots+=`<div class="bono-dot ${dcls}">${i}</div>`;
       }
 
-      contratoHtml=`<div class="contrato-box">
-        <div class="contrato-row"><span class="contrato-label">Contrato</span><span class="contrato-val">${cl.sesionesContrato} ses. × ${precio} Dh = ${totalContrato} Dh</span></div>
-        <div class="contrato-row"><span class="contrato-label">Sesión actual</span><span class="contrato-val">${totalSes} de ${cl.sesionesContrato} (quedan ${sesRestantes})</span></div>
-        <div class="contrato-row"><span class="contrato-label">Total pagado</span><span class="contrato-val" style="color:var(--green)">${totalPagado} Dh</span></div>
-        <div class="contrato-row"><span class="contrato-label">Debe a ti</span><span class="contrato-val" style="color:${deudaCl>0?'var(--red)':'var(--green)'}">${deudaCl>0?deudaCl+' Dh':'✓ Saldado'}</span></div>
-        <div class="contrato-progress" style="margin-top:8px"><div class="contrato-fill" style="width:${pctContrato}%;background:var(--accent)"></div></div>
+      contratosHtml+=`<div class="contrato-box" style="${!esActivo?'opacity:0.6':''}">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-size:11px;font-weight:700;color:var(--accent2)">${c.servicio||'Cura'} ${contratos.length>1?'#'+(idx+1):''}</span>
+          <span style="font-size:10px;color:var(--muted)">${c.fechaInicio?fmtFecha(c.fechaInicio):''}</span>
+        </div>
+        <div class="contrato-row"><span class="contrato-label">Contrato</span><span class="contrato-val">${c.sesiones} ses. × ${c.precio} Dh = ${totalContrato} Dh</span></div>
+        <div class="contrato-row"><span class="contrato-label">Sesión</span><span class="contrato-val">${totalSes} de ${c.sesiones} (quedan ${sesRestantes})</span></div>
+        <div class="contrato-row"><span class="contrato-label">Pagado</span><span class="contrato-val" style="color:var(--green)">${totalPagadoCt} Dh</span></div>
+        <div class="contrato-row"><span class="contrato-label">Debe</span><span class="contrato-val" style="color:${deudaCt>0?'var(--red)':'var(--green)'}">${deudaCt>0?deudaCt+' Dh':'✓ Saldado'}</span></div>
+        <div class="contrato-progress" style="margin-top:6px"><div class="contrato-fill" style="width:${pctCt}%;background:${esActivo?'var(--accent)':'var(--muted)'}"></div></div>
         <div class="bono-dots">${dots}</div>
+        ${esActivo?`<button class="btn btn-m" onclick="abrirModalContrato('${cl.id}')" style="margin-top:8px;font-size:11px">+ Nueva cura</button>`:''}
       </div>`;
+    });
+
+    if(contratos.length===0){
+      contratosHtml=`<button class="btn" onclick="abrirModalContrato('${cl.id}')" style="width:100%;margin-bottom:8px">+ Añadir cura/contrato</button>`;
     }
 
     // Sesiones del mes
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy=new Date().toISOString().split('T')[0];
     const sesHtml=sesCl.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(s=>{
       const cobS=cobros.filter(c=>c.clientaId===cl.id&&c.sesionId===s.id).reduce((a,c)=>a+Number(c.importe),0);
-      const realizada = s.realizada !== undefined ? s.realizada : s.fecha <= hoy;
-      const realizadaBtn = `<button onclick="toggleSesion('${s.id}')" style="background:${realizada?'var(--green)':'var(--surface2)'};border:1px solid ${realizada?'var(--green)':'var(--border)'};color:${realizada?'var(--bg)':'var(--muted)'};padding:2px 8px;border-radius:6px;font-size:10px;cursor:pointer;font-family:inherit;">${realizada?'✓ Realizada':'Pendiente'}</button>`;
+      const realizada=s.realizada!==undefined?s.realizada:s.fecha<=hoy;
+      const realizadaBtn=`<button onclick="toggleSesion('${s.id}')" style="background:${realizada?'var(--green)':'var(--surface2)'};border:1px solid ${realizada?'var(--green)':'var(--border)'};color:${realizada?'var(--bg)':'var(--muted)'};padding:2px 8px;border-radius:6px;font-size:10px;cursor:pointer;font-family:inherit;">${realizada?'✓ Realizada':'Pendiente'}</button>`;
       return `<div class="sesion-item">
         <div class="sesion-info"><span class="sesion-date">${fmtFecha(s.fecha)}</span>${s.servicio?'<span class="sesion-tag">'+s.servicio+'</span>':''}</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          ${realizadaBtn}
-          ${cobS>0?'<span class="sesion-cobro">'+cobS+' Dh ✓</span>':''}
-        </div>
+        <div style="display:flex;align-items:center;gap:8px">${realizadaBtn}${cobS>0?'<span class="sesion-cobro">'+cobS+' Dh</span>':''}</div>
       </div>`;
     }).join('');
 
     html+=`<div class="card">
       <div class="card-header">
-        <div><div class="card-name">${cl.nombre}</div>${cl.servicio?'<div class="card-sub">'+cl.servicio+'</div>':''}</div>
+        <div>
+          <div class="card-name">${cl.nombre}</div>
+          ${cl.telefono?`<div class="card-sub">📞 ${cl.telefono}</div>`:''}
+        </div>
         <span class="badge ${pct>=100?'badge-ok':pend>0?'badge-debt':'badge-pending'}">${pct>=100?'Al día':pend>0?'-'+pend+' Dh':'OK'}</span>
       </div>
-      ${contratoHtml}
+      ${contratosHtml}
       <div class="stats-row">
         <div class="stat"><div class="stat-val">${sesCl.length}</div><div class="stat-lbl">Ses. mes</div></div>
         <div class="stat"><div class="stat-val">${cobCl} Dh</div><div class="stat-lbl">Cobrado</div></div>
@@ -699,33 +764,36 @@ function renderGastos(){
 
 function renderDeuda(){
   let html='';
-  E.clientas.forEach(cl=>{
-    if(!cl.sesionesContrato||cl.sesionesContrato===0) return;
-    const precio=cl.precio||E.config.precioBase;
-    const totalContrato=cl.sesionesContrato*precio;
-    const totalPagado=E.cobros.filter(c=>c.clientaId===cl.id).reduce((s,c)=>s+Number(c.importe),0)+(cl.pagoInicial||0);
-    const deudaCl=totalContrato-totalPagado;
-    const totalSes=E.sesiones.filter(s=>s.clientaId===cl.id).length;
-    const sesRestantes=Math.max(0,cl.sesionesContrato-totalSes);
-    const pct=Math.min(100,(totalSes/cl.sesionesContrato)*100);
-
+  E.clientas.sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).forEach(cl=>{
+    const contratos=getContratosClienta(cl.id);
+    if(!contratos.length) return;
+    const totalPagadoCl=E.cobros.filter(c=>c.clientaId===cl.id).reduce((s,c)=>s+Number(c.importe),0);
+    const totalContratadoCl=contratos.reduce((s,c)=>s+c.sesiones*c.precio,0);
+    const deudaTotal=Math.max(0,totalContratadoCl-totalPagadoCl);
     html+=`<div class="card">
       <div class="card-header">
-        <div><div class="card-name">${cl.nombre}</div><div class="card-sub">${cl.servicio||''} · desde ${cl.fechaInicio?fmtFecha(cl.fechaInicio):'-'}</div></div>
-        <span class="badge ${deudaCl<=0?'badge-ok':'badge-debt'}">${deudaCl<=0?'Saldado':deudaCl+' Dh debe'}</span>
-      </div>
-      <div class="contrato-box">
-        <div class="contrato-row"><span class="contrato-label">Total contrato</span><span class="contrato-val">${totalContrato} Dh (${cl.sesionesContrato} ses.)</span></div>
-        <div class="contrato-row"><span class="contrato-label">Pago inicial</span><span class="contrato-val">${cl.pagoInicial||0} Dh</span></div>
-        <div class="contrato-row"><span class="contrato-label">Cobrado después</span><span class="contrato-val">${E.cobros.filter(c=>c.clientaId===cl.id).reduce((s,c)=>s+Number(c.importe),0)} Dh</span></div>
-        <div class="contrato-row"><span class="contrato-label">Total pagado</span><span class="contrato-val" style="color:var(--green)">${totalPagado} Dh</span></div>
-        <div class="contrato-row"><span class="contrato-label" style="font-weight:600">Deuda cliente</span><span class="contrato-val" style="color:${deudaCl>0?'var(--red)':'var(--green)'}">${deudaCl>0?deudaCl+' Dh':'✓ Saldado'}</span></div>
-        <div class="contrato-row"><span class="contrato-label">Sesiones realizadas</span><span class="contrato-val">${totalSes} / ${cl.sesionesContrato} (quedan ${sesRestantes})</span></div>
-        <div class="contrato-progress" style="margin-top:8px"><div class="contrato-fill" style="width:${pct}%;background:var(--accent)"></div></div>
-      </div>
-    </div>`;
+        <div><div class="card-name">${cl.nombre}</div><div class="card-sub">${contratos.length} contrato${contratos.length>1?'s':''}</div></div>
+        <span class="badge ${deudaTotal<=0?'badge-ok':'badge-debt'}">${deudaTotal<=0?'Saldado':deudaTotal+' Dh debe'}</span>
+      </div>`;
+    contratos.forEach((c,idx)=>{
+      const totalSes=E.sesiones.filter(s=>s.clientaId===cl.id&&(s.contratoId===c.id||idx===contratos.length-1)).length;
+      const totalPagadoCt=E.cobros.filter(cb=>cb.clientaId===cl.id&&cb.contratoId===c.id).reduce((s,cb)=>s+Number(cb.importe),0)+(c.pagoInicial||0);
+      const totalCt=c.sesiones*c.precio;
+      const deudaCt=Math.max(0,totalCt-totalPagadoCt);
+      const sesRestantes=Math.max(0,c.sesiones-totalSes);
+      const pct=Math.min(100,(totalSes/c.sesiones)*100);
+      html+=`<div class="contrato-box" style="${idx<contratos.length-1?'opacity:0.65':''}">
+        <div style="font-size:11px;font-weight:700;color:var(--accent2);margin-bottom:6px">${c.servicio||'Cura'} #${idx+1} · ${c.fechaInicio?fmtFecha(c.fechaInicio):''}</div>
+        <div class="contrato-row"><span class="contrato-label">Contrato</span><span class="contrato-val">${c.sesiones} ses. × ${c.precio} Dh = ${totalCt} Dh</span></div>
+        <div class="contrato-row"><span class="contrato-label">Pagado</span><span class="contrato-val" style="color:var(--green)">${totalPagadoCt} Dh</span></div>
+        <div class="contrato-row"><span class="contrato-label">Debe</span><span class="contrato-val" style="color:${deudaCt>0?'var(--red)':'var(--green)'}">${deudaCt>0?deudaCt+' Dh':'✓ OK'}</span></div>
+        <div class="contrato-row"><span class="contrato-label">Sesiones</span><span class="contrato-val">${totalSes}/${c.sesiones} (quedan ${sesRestantes})</span></div>
+        <div class="contrato-progress"><div class="contrato-fill" style="width:${pct}%;background:var(--accent)"></div></div>
+      </div>`;
+    });
+    html+='</div>';
   });
-  document.getElementById('deudaCards').innerHTML=html||'<div class="empty">No hay contratos activos</div>';
+  document.getElementById('deudaCards').innerHTML=html||'<div class="empty">No hay contratos</div>';
 }
 
 function renderServicios(){
@@ -752,10 +820,10 @@ function poblarSelects(clId=''){
   const srvOpts=(E.servicios||[]).map(s=>`<option>${s}</option>`).join('');
   const metOpts=(E.metodos||[]).map(m=>`<option>${m}</option>`).join('');
   const catOpts=(E.categorias||[]).map(c=>`<option>${c}</option>`).join('');
-  ['coClienta','seClienta'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=clOpts;});
+  ['coClienta','seClienta','ctClienta'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=clOpts;});
   const gcEl=document.getElementById('gaClienta'); // no existe pero por si acaso
-  ['coServicio','seServicio','clServicio'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=srvOpts;});
-  ['coMetodo','gaMetodo'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=metOpts;});
+  ['coServicio','seServicio','ctServicio'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=srvOpts;});
+  ['coMetodo','gaMetodo','ctMetodo'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=metOpts;});
   const gaC=document.getElementById('gaCat'); if(gaC) gaC.innerHTML=catOpts;
 }
 
@@ -797,18 +865,51 @@ document.addEventListener('change', e=>{
 function guardarClienta(){
   const nombre=document.getElementById('clNombre').value.trim();
   if(!nombre) return alert('Escribe un nombre');
-  const precio=Number(document.getElementById('clPrecio').value)||E.config.precioBase;
   const calNombre=document.getElementById('clCalNombre').value.trim();
-  const sesionesContrato=Number(document.getElementById('clSesiones').value)||0;
-  const pagoInicial=Number(document.getElementById('clPagoInicial').value)||0;
-  const fechaInicio=document.getElementById('clFechaInicio').value||new Date().toISOString().split('T')[0];
-  const servicio=document.getElementById('clServicio').value;
+  const telefono=document.getElementById('clTelefono').value.trim();
   const clId=uid();
-  E.clientas.push({id:clId,nombre,calNombre:calNombre||nombre,precio,sesionesContrato,pagoInicial,fechaInicio,servicio});
-  if(pagoInicial>0){
-    E.cobros.push({id:uid(),clientaId:clId,fecha:fechaInicio,importe:pagoInicial,metodo:'Efectivo',servicio,nota:'Pago inicial contrato',vencimiento:fechaInicio,esInicial:true});
+  E.clientas.push({id:clId,nombre,calNombre:calNombre||nombre,telefono});
+  save(); cerrarModal('modalClienta');
+  // Preguntar si quiere añadir contrato
+  if(confirm('¿Añadir un contrato/cura a '+nombre+'?')){
+    abrirModalContrato(clId);
+  } else {
+    renderAll();
   }
-  save(); cerrarModal('modalClienta'); renderAll();
+}
+
+function abrirModalContrato(clId=''){
+  const opts=E.clientas.map(c=>`<option value="${c.id}" ${c.id===clId?'selected':''}>${c.nombre}</option>`).join('');
+  document.getElementById('ctClienta').innerHTML=opts;
+  const srvOpts=(E.servicios||[]).map(s=>`<option>${s}</option>`).join('');
+  document.getElementById('ctServicio').innerHTML=srvOpts;
+  const metOpts=(E.metodos||[]).map(m=>`<option>${m}</option>`).join('');
+  document.getElementById('ctMetodo').innerHTML=metOpts;
+  document.getElementById('ctSesiones').value=10;
+  document.getElementById('ctPrecio').value=E.config.precioBase;
+  document.getElementById('ctPagoInicial').value=0;
+  document.getElementById('ctFechaInicio').value=new Date().toISOString().split('T')[0];
+  document.getElementById('ctNotas').value='';
+  document.getElementById('modalContrato').classList.add('open');
+}
+
+function guardarContrato(){
+  const clientaId=document.getElementById('ctClienta').value;
+  const servicio=document.getElementById('ctServicio').value;
+  const sesiones=Number(document.getElementById('ctSesiones').value)||10;
+  const precio=Number(document.getElementById('ctPrecio').value)||E.config.precioBase;
+  const pagoInicial=Number(document.getElementById('ctPagoInicial').value)||0;
+  const metodo=document.getElementById('ctMetodo').value;
+  const fechaInicio=document.getElementById('ctFechaInicio').value||new Date().toISOString().split('T')[0];
+  const notas=document.getElementById('ctNotas').value;
+  if(!clientaId) return alert('Selecciona una clienta');
+  if(!E.contratos) E.contratos=[];
+  const ctId=uid();
+  E.contratos.push({id:ctId,clientaId,servicio,sesiones,precio,pagoInicial,fechaInicio,notas,activo:true});
+  if(pagoInicial>0){
+    E.cobros.push({id:uid(),clientaId,contratoId:ctId,fecha:fechaInicio,importe:pagoInicial,metodo,servicio,nota:'Pago inicial - '+servicio,vencimiento:fechaInicio,esInicial:true});
+  }
+  save(); cerrarModal('modalContrato'); renderAll();
 }
 
 function guardarCobro(){
@@ -869,42 +970,7 @@ function guardarEdicionClienta(){
   if(!nuevoNombre) return alert('Escribe un nombre');
   cl.nombre=nuevoNombre;
   cl.calNombre=document.getElementById('editClCalNombre').value.trim()||nuevoNombre;
-  cl.servicio=document.getElementById('editClServicio').value;
-  cl.sesionesContrato=Number(document.getElementById('editClSesiones').value)||0;
-  cl.precio=Number(document.getElementById('editClPrecio').value)||E.config.precioBase;
-  // Si cambia el pago inicial, actualizar el cobro inicial existente
-  const nuevoPagoInicial=Number(document.getElementById('editClPagoInicial').value)||0;
-  const cobroInicial=E.cobros.find(c=>c.clientaId===id&&c.esInicial);
-  if(cobroInicial) cobroInicial.importe=nuevoPagoInicial;
-  else if(nuevoPagoInicial>0){
-    E.cobros.push({id:uid(),clientaId:id,fecha:cl.fechaInicio||new Date().toISOString().split('T')[0],importe:nuevoPagoInicial,metodo:'Efectivo',nota:'Pago inicial contrato',vencimiento:cl.fechaInicio,esInicial:true});
-  }
-  cl.pagoInicial=nuevoPagoInicial;
-  cl.fechaInicio=document.getElementById('editClFechaInicio').value;
-  // Corrección manual de sesiones realizadas
-  const sesRealizadasVal=document.getElementById('editClSesRealizadas').value;
-  if(sesRealizadasVal!==''){
-    const nSes=Number(sesRealizadasVal);
-    // Eliminar sesiones manuales de corrección anteriores
-    E.sesiones=E.sesiones.filter(s=>!(s.clientaId===id&&s.fuente==='correccion'));
-    // Contar sesiones actuales
-    const sesActuales=E.sesiones.filter(s=>s.clientaId===id).length;
-    // Añadir o quitar sesiones para llegar al número deseado
-    if(nSes>sesActuales){
-      for(let i=0;i<nSes-sesActuales;i++){
-        E.sesiones.push({id:uid(),clientaId:id,fecha:cl.fechaInicio||new Date().toISOString().split('T')[0],fuente:'correccion',realizada:true});
-      }
-    } else if(nSes<sesActuales){
-      // Quitar las más recientes que sean de gcal o manual
-      const sesCl=E.sesiones.filter(s=>s.clientaId===id).sort((a,b)=>b.fecha.localeCompare(a.fecha));
-      let aQuitar=sesActuales-nSes;
-      for(const s of sesCl){
-        if(aQuitar<=0) break;
-        E.sesiones=E.sesiones.filter(x=>x.id!==s.id);
-        aQuitar--;
-      }
-    }
-  }
+  cl.telefono=document.getElementById('editClTelefono').value.trim();
   save(); cerrarModal('modalEditarClienta'); renderAll();
 }
 
