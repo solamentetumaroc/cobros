@@ -306,6 +306,9 @@
 
   <div class="section-title">Datos</div>
   <button class="btn" style="width:100%;margin-bottom:8px" onclick="exportarCSV()">⬇ Exportar CSV</button>
+  <button class="btn" style="width:100%;margin-bottom:8px" onclick="conectarGCalExportNombres()">📅 Exportar nombres del calendario</button>
+  <button class="btn" style="width:100%;margin-bottom:8px" onclick="autoAsignarCodigos()">🔢 Auto-asignar códigos a clientas</button>
+  <button class="btn" style="width:100%;margin-bottom:8px" onclick="exportarClientasCSV()">⬇ Exportar clientas + códigos</button>
   <button class="btn btn-r" style="width:100%" onclick="borrarDatos()">⚠ Borrar todos los datos</button>
 </div>
 
@@ -315,6 +318,7 @@
 <div class="modal-overlay" id="modalClienta">
   <div class="modal">
     <h3>Nueva clienta</h3>
+    <div class="form-group"><label>Código (4 cifras)</label><input type="text" id="clCodigo" maxlength="4" inputmode="numeric" placeholder="ej. 1001"/></div>
     <div class="form-group"><label>Nombre completo</label><input type="text" id="clNombre" placeholder="Fatima Zahra..."/></div>
     <div class="form-group"><label>Nombre en el calendario (si difiere)</label><input type="text" id="clCalNombre" placeholder="igual al nombre si vacío"/></div>
     <div class="form-group"><label>Teléfono (opcional)</label><input type="tel" id="clTelefono" placeholder="06..."/></div>
@@ -349,6 +353,7 @@
   <div class="modal">
     <h3>Editar clienta</h3>
     <input type="hidden" id="editClId"/>
+    <div class="form-group"><label>Código (4 cifras)</label><input type="text" id="editClCodigo" maxlength="4" inputmode="numeric"/></div>
     <div class="form-group"><label>Nombre completo</label><input type="text" id="editClNombre"/></div>
     <div class="form-group"><label>Nombre en el calendario</label><input type="text" id="editClCalNombre"/></div>
     <div class="form-group"><label>Teléfono</label><input type="tel" id="editClTelefono"/></div>
@@ -439,7 +444,12 @@ function checkLogin(){
     document.getElementById('loginScreen').style.display='none';
     renderAll();
     const pendingToken=sessionStorage.getItem('gcal_pending_token');
-    if(pendingToken){ sessionStorage.removeItem('gcal_pending_token'); setTimeout(()=>importarGCal(pendingToken),500); }
+    if(pendingToken){
+      sessionStorage.removeItem('gcal_pending_token');
+      const accion=localStorage.getItem('gcal_accion'); localStorage.removeItem('gcal_accion');
+      if(accion==='exportNombres') setTimeout(()=>exportarNombresGCal(pendingToken),500);
+      else setTimeout(()=>importarGCal(pendingToken),500);
+    }
   } else {
     document.getElementById('loginError').style.display='block';
     document.getElementById('loginInput').value='';
@@ -697,7 +707,7 @@ function renderClientas(){
     html+=`<div class="card">
       <div class="card-header">
         <div>
-          <div class="card-name">${cl.nombre}</div>
+          <div class="card-name">${cl.codigo?`<span style="color:var(--accent2);font-weight:700">${cl.codigo}</span> `:''}${cl.nombre}</div>
           ${cl.telefono?`<div class="card-sub">📞 ${cl.telefono}</div>`:''}
         </div>
         <span class="badge ${pct>=100?'badge-ok':pend>0?'badge-debt':'badge-pending'}">${pct>=100?'Al día':pend>0?'-'+pend+' Dh':'OK'}</span>
@@ -849,6 +859,7 @@ function abrirModal(id){
     document.getElementById('clPagoInicial').value=0;
     document.getElementById('clNombre').value='';
     document.getElementById('clCalNombre').value='';
+    var _cc=document.getElementById('clCodigo'); if(_cc)_cc.value='';
   }
   document.getElementById(id).classList.add('open');
 }
@@ -881,8 +892,10 @@ function guardarClienta(){
   if(!nombre) return alert('Escribe un nombre');
   const calNombre=document.getElementById('clCalNombre').value.trim();
   const telefono=document.getElementById('clTelefono').value.trim();
+  const codigo=(document.getElementById('clCodigo').value||'').trim();
+  if(codigo && E.clientas.some(c=>String(c.codigo||'')===codigo)) return alert('Ese código ya lo tiene otra clienta. Usa uno distinto.');
   const clId=uid();
-  E.clientas.push({id:clId,nombre,calNombre:calNombre||nombre,telefono});
+  E.clientas.push({id:clId,codigo,nombre,calNombre:calNombre||nombre,telefono});
   save(); cerrarModal('modalClienta');
   // Preguntar si quiere añadir contrato
   if(confirm('¿Añadir un contrato/cura a '+nombre+'?')){
@@ -967,6 +980,7 @@ function editarClienta(id){
   const srvOpts=(E.servicios||[]).map(s=>`<option ${s===cl.servicio?'selected':''}>${s}</option>`).join('');
   document.getElementById('editClServicio').innerHTML=srvOpts;
   document.getElementById('editClId').value=id;
+  document.getElementById('editClCodigo').value=cl.codigo||'';
   document.getElementById('editClNombre').value=cl.nombre||'';
   document.getElementById('editClCalNombre').value=cl.calNombre||'';
   document.getElementById('editClSesiones').value=cl.sesionesContrato||0;
@@ -982,6 +996,9 @@ function guardarEdicionClienta(){
   if(!cl) return;
   const nuevoNombre=document.getElementById('editClNombre').value.trim();
   if(!nuevoNombre) return alert('Escribe un nombre');
+  const nuevoCodigo=(document.getElementById('editClCodigo').value||'').trim();
+  if(nuevoCodigo && E.clientas.some(c=>c.id!==id&&String(c.codigo||'')===nuevoCodigo)) return alert('Ese código ya lo tiene otra clienta. Usa uno distinto.');
+  cl.codigo=nuevoCodigo;
   cl.nombre=nuevoNombre;
   cl.calNombre=document.getElementById('editClCalNombre').value.trim()||nuevoNombre;
   cl.telefono=document.getElementById('editClTelefono').value.trim();
@@ -1080,12 +1097,20 @@ async function importarGCal(token){
 
     let nuevas=0;
     todosEventos.forEach(ev=>{
-      const tit=norm(ev.summary||'');
-      const cl=E.clientas.find(c=>{
-        const n=norm(c.nombre); const cn=norm(c.calNombre||c.nombre);
-        const partes=n.split(' '); const invertido=partes.length>=2?partes.slice(1).join(' ')+' '+partes[0]:'';
-        return tit.includes(cn)||tit.includes(n)||(invertido&&tit.includes(invertido));
-      });
+      const titRaw=ev.summary||'';
+      // 1) Match por código: el evento empieza por 4 cifras
+      const codMatch=titRaw.trim().match(/^(\d{4})\b/);
+      let cl=null;
+      if(codMatch) cl=E.clientas.find(c=>String(c.codigo||'')===codMatch[1]);
+      // 2) Respaldo: match por nombre (normalizado, normal o invertido)
+      if(!cl){
+        const tit=norm(titRaw);
+        cl=E.clientas.find(c=>{
+          const n=norm(c.nombre); const cn=norm(c.calNombre||c.nombre);
+          const partes=n.split(' '); const invertido=partes.length>=2?partes.slice(1).join(' ')+' '+partes[0]:'';
+          return tit.includes(cn)||tit.includes(n)||(invertido&&tit.includes(invertido));
+        });
+      }
       if(!cl) return;
       const fecha=(ev.start?.date||ev.start?.dateTime||'').substring(0,10);
       if(!fecha) return;
@@ -1109,6 +1134,66 @@ function exportarCSV(){
 }
 
 function borrarDatos(){ if(confirm('¿Borrar TODOS los datos?')){ localStorage.removeItem('cobros_v4'); E=cargarEstado(); renderAll(); } }
+
+// ===== CÓDIGOS DE CLIENTAS =====
+// Asigna códigos correlativos (1001, 1002...) a las clientas que aún no tengan
+function autoAsignarCodigos(){
+  let usados=new Set(E.clientas.map(c=>String(c.codigo||'')).filter(Boolean));
+  let next=1001, n=0;
+  [...E.clientas].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).forEach(cl=>{
+    if(!cl.codigo){
+      while(usados.has(String(next))) next++;
+      cl.codigo=String(next); usados.add(String(next)); next++; n++;
+    }
+  });
+  if(n>0){ save(); renderAll(); alert(`✓ ${n} código(s) asignado(s), empezando en 1001.\nAhora en el calendario escribe el código antes del nombre: "1001 Fatima".`); }
+  else alert('Todas las clientas ya tienen código.');
+}
+
+// Descarga un CSV con las clientas y sus códigos (para tu hoja de Google)
+function exportarClientasCSV(){
+  let csv='codigo,nombre,nombre_calendario,telefono\n';
+  [...E.clientas].sort((a,b)=>String(a.codigo||'').localeCompare(String(b.codigo||''))).forEach(c=>{
+    csv+=`${c.codigo||''},"${(c.nombre||'').replace(/"/g,'""')}","${(c.calNombre||'').replace(/"/g,'""')}","${c.telefono||''}"\n`;
+  });
+  const b=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(b);
+  a.download='clientas_codigos.csv'; a.click();
+}
+
+// Lanza OAuth para luego exportar los nombres del calendario
+function conectarGCalExportNombres(){
+  localStorage.setItem('gcal_accion','exportNombres');
+  const url=`https://accounts.google.com/o/oauth2/v2/auth?client_id=${GCAL_CLIENT_ID}&redirect_uri=${encodeURIComponent(location.origin+location.pathname)}&response_type=token&scope=${encodeURIComponent('https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly')}`;
+  window.location.href=url;
+}
+
+// Lee TODOS los calendarios (incl. Mesotherapie) y baja un CSV con los nombres únicos
+async function exportarNombresGCal(token){
+  try{
+    const ahora=new Date();
+    const ini=new Date(ahora.getFullYear(),ahora.getMonth()-12,1).toISOString();
+    const fin=new Date(ahora.getFullYear(),ahora.getMonth()+2,28,23,59).toISOString();
+    const calRes=await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList',{headers:{Authorization:`Bearer ${token}`}});
+    const calData=await calRes.json();
+    const calendarios=calData.items||[];
+    const titulos=new Set();
+    for(const cal of calendarios){
+      try{
+        const res=await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?timeMin=${encodeURIComponent(ini)}&timeMax=${encodeURIComponent(fin)}&singleEvents=true&maxResults=2500`,{headers:{Authorization:`Bearer ${token}`}});
+        const data=await res.json();
+        (data.items||[]).forEach(ev=>{ const t=(ev.summary||'').replace(/^\s*\d{4}\s*/,'').trim(); if(t) titulos.add(t); });
+      }catch(e){}
+    }
+    const lista=[...titulos].sort((a,b)=>a.localeCompare(b,'es'));
+    let csv='codigo,nombre_calendario\n';
+    lista.forEach(n=>{ csv+=`,"${n.replace(/"/g,'""')}"\n`; });
+    const b=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(b);
+    a.download='nombres_calendario.csv'; a.click();
+    alert(`✓ ${lista.length} nombres únicos exportados de ${calendarios.length} calendarios.\n\nÁbrelo en Google Sheets, agrupa las erratas de la misma clienta y asigna un código de 4 cifras a cada una.`);
+  }catch(e){ alert('Error al exportar nombres: '+e.message); }
+}
 
 document.querySelectorAll('.modal-overlay').forEach(o=>{ o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');}); });
 
